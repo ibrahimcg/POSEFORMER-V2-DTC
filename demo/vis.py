@@ -152,6 +152,7 @@ def get_pose3D(video_path, output_dir):
     video_length = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
     ## 3D
+    keypoints_3d = []
     print('\nGenerating 3D pose...')
     for i in tqdm(range(video_length)):
         ret, img = cap.read()
@@ -209,6 +210,7 @@ def get_pose3D(video_path, output_dir):
         rot = np.array(rot, dtype='float32')
         post_out = camera_to_world(post_out, R=rot, t=0)
         post_out[:, 2] -= np.min(post_out[:, 2])
+        keypoints_3d.append(post_out)
 
         input_2D_no = input_2D_no[args.pad]
 
@@ -232,6 +234,8 @@ def get_pose3D(video_path, output_dir):
         plt.clf()
         plt.close(fig)
         
+    keypoints_3d = np.array(keypoints_3d)  # Shape: (num_frames, 17, 3)
+    np.save(output_dir + '3d_keypoints.npy', keypoints_3d)
     print('Generating 3D pose successful!')
 
     ## all
@@ -244,16 +248,28 @@ def get_pose3D(video_path, output_dir):
         image_2d = plt.imread(image_2d_dir[i])
         image_3d = plt.imread(image_3d_dir[i])
 
-        ## crop
-        edge = (image_2d.shape[1] - image_2d.shape[0]) // 2
-        image_2d = image_2d[:, edge:image_2d.shape[1] - edge]
+        ## Determine orientation and adjust cropping
+        is_portrait = image_2d.shape[0] > image_2d.shape[1]
+        
+        if is_portrait:
+            # For portrait videos, maintain height and center width
+            image_2d = image_2d[:, :image_2d.shape[0]]  # Keep square aspect ratio
+        else:
+            # For landscape videos, use original cropping
+            edge = (image_2d.shape[1] - image_2d.shape[0]) // 2
+            image_2d = image_2d[:, edge:image_2d.shape[1] - edge]
 
         edge = 130
         image_3d = image_3d[edge:image_3d.shape[0] - edge, edge:image_3d.shape[1] - edge]
 
+        ## Adjust figure size based on orientation
+        if is_portrait:
+            fig = plt.figure(figsize=(8.0, 12.0))  # Taller figure for portrait
+        else:
+            fig = plt.figure(figsize=(15.0, 5.4))  # Original landscape size
+
         ## show
         font_size = 12
-        fig = plt.figure(figsize=(15.0, 5.4))
         ax = plt.subplot(121)
         showimage(ax, image_2d)
         ax.set_title("Input", fontsize = font_size)
@@ -270,6 +286,7 @@ def get_pose3D(video_path, output_dir):
         plt.savefig(output_dir_pose + str(('%04d'% i)) + '_pose.png', dpi=200, bbox_inches = 'tight')
         plt.clf()
         plt.close(fig)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
